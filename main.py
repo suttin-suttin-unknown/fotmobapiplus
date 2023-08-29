@@ -1,7 +1,8 @@
 import glob
 import json
-import re
 import os
+import re
+import time
 from datetime import datetime
 from operator import itemgetter
 
@@ -142,6 +143,23 @@ def get_totw_table_formatted(table):
 
     return formatted_rows
 
-        
+
+def get_all_season_totw(league_id, year):
+    week = 1
+    while True:
+        try:
+            print(f"Saving data for League {league_id} Week {week}/{year}.")
+            print(*get_totw_table_formatted(get_totw_table(league_id, week, year)), sep="\n")
+        except IndexError as error:
+            print(error)
+            break
+        except Exception as error:
+            print(error)
+            print(f"Skipping TOTW player save for League {league_id} Week {week}{year}.")
+            time.sleep(5)
+
+        week += 1
+
+
 if __name__ == "__main__":
     from pprint import pprint
