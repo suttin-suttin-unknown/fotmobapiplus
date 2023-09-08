@@ -14,7 +14,7 @@ total_size = 0
 for path in paths:
     total_size += os.path.getsize(path)
 
-total_size = total_size /(1024 * 1024)
+total_size = total_size / (1024 * 1024)
 
 print(f"Total Size: {total_size:.2f} MB")
 
