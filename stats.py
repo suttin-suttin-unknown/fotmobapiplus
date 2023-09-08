@@ -6,7 +6,7 @@ import os
 import psutil
 
 paths = []
-for root, _, files in os.walk("league"):
+for root, _, files in os.walk("data"):
     for file in files:
         paths.append(os.path.join(root, file))
 

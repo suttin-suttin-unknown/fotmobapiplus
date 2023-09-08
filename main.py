@@ -116,6 +116,80 @@ def get_league_totw_data(league_id, week, year):
     return totw
 
 
+def get_player_data_for_db(player_id):
+    """
+    Pulls data from api and shrinks it for db.
+    """
+    def parse_origin_data(player_data):
+        origin_data = player_data["origin"]
+        data = {}
+        data["onLoan"] = origin_data["onLoan"]
+        data["teamId"] = origin_data["teamId"]
+        data["teamName"] = origin_data["teamName"]
+        data["positions"] = []
+        positions = origin_data["positionDesc"]["positions"]
+        for position in positions:
+            data["positions"].append({
+                "position": position["strPosShort"]["label"], 
+                "occurences": position["occurences"], 
+                "is_main_position": position["isMainPosition"]
+            })
+
+        return data
+    
+    def parse_player_prop_data(player_data):
+        data = {}
+        for prop in player_data["playerProps"]:
+            value = prop["value"]
+            prop_key = "_".join([w.lower() for w in prop["title"].split()])
+            data[prop_key] = value["key"] or value["fallback"]
+        return data
+    
+    def parse_last_league_data(player_data):
+        data = {}
+        league_data = player_data["lastLeague"]
+        data["leagueId"] = league_data["leagueId"]
+        for prop in league_data["playerProps"]:
+            key = prop["key"]
+            if key == "rating_title":
+                data["rating"] = prop["ratingProps"]["num"]
+                data["rating_color"] = prop["ratingProps"]["bgcolor"]
+            else:
+                data[key] = prop["value"]
+        
+        return data
+    
+    def parse_career_history_data(player_data):
+        data = {}
+        data["clubs"] = []
+        for club in player_data["careerHistory"]["careerData"]["careerItems"]["senior"]:
+            if not club["hasUncertainData"]:
+                club_data = {
+                    "appearances": club["appearances"],
+                    "start_date": club["startDate"],
+                    "team": club["team"]
+                }
+
+                if club.get("endDate"):
+                    club_data["end_date"] = club["endDate"]
+
+                data["clubs"].append(club_data)
+
+        return data
+    
+    player = get_player(player_id)
+
+    data = {}
+    data["id"] = player["id"]
+    data["name"] = player["name"]
+    data.update(parse_origin_data(player))
+    data.update(parse_player_prop_data(player))
+    data.update(parse_last_league_data(player))
+    data.update(parse_career_history_data(player))
+    
+    return data
+
+
 def get_league_totw_player_data(league_id, week, year):
     directories = glob.glob(f"{data_dir}/league/{league_id}/totw/{year}/{week}/*.json")
     if directories:
@@ -126,7 +200,12 @@ def get_league_totw_player_data(league_id, week, year):
     data = []
     totw = get_league_totw_data(league_id, week, year)
     for player in totw["players"]:
-        data.append(get_player_primary_info(player["participantId"]))
+        # player_data = get_player(player["participantId"])
+        # # # origin
+        # # on_loan = player_data["origin"]["onLoan"]
+        # # positions = [itemgetter(*["isMainPosition", "occurences", ])(position) for position in player_data["origin"]["positionDesc"]["positions"]]
+
+        data.append(get_player_data_for_db(player["participantId"]))
 
     ts = round(float(datetime.now().timestamp()))
     path = f"{data_dir}/league/{league_id}/totw/{year}/{week}/{ts}.json"
@@ -137,6 +216,7 @@ def get_league_totw_player_data(league_id, week, year):
     return data
 
 
+# Probably redundant
 def get_totw_table(league_id, week, year):
     table = []
     player_data = get_league_totw_player_data(league_id, week, year)
