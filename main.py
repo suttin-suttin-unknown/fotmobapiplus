@@ -10,6 +10,7 @@ import requests
 from cachetools import cached, TTLCache
 
 api_host = "https://www.fotmob.com/api"
+data_dir = "./data"
 week_in_seconds = 60 * 60 * 24 * 7
 no_cache_headers = {"Cache-Control": "no-cache"}
 
@@ -30,6 +31,26 @@ def get_league(league_id):
     if hasattr(league, "json"):
         return league.json()
     
+
+def get_league_roster(league_id):
+    league = get_league(league_id)
+    table = league["table"][0]["data"]["table"]["all"]
+    return [team["name"] for team in table]
+
+
+def get_league_transfers(league_id):
+    transfers = get_league(league_id)["transfers"]["data"]
+    if transfers:
+        for transfer in transfers:
+            del transfer["position"]
+            del transfer["transferText"]
+            del transfer["transferType"]
+            if transfer.get("fee"):
+                value = transfer["fee"].get("value")
+                del transfer["fee"]
+                transfer["fee"] = value
+    return transfers
+
     
 @cached(TTLCache(maxsize=100, ttl=week_in_seconds))
 def get_player(player_id):
@@ -96,7 +117,7 @@ def get_league_totw_data(league_id, week, year):
 
 
 def get_league_totw_player_data(league_id, week, year):
-    directories = glob.glob(f"league/{league_id}/totw/{year}/{week}/*.json")
+    directories = glob.glob(f"{data_dir}/league/{league_id}/totw/{year}/{week}/*.json")
     if directories:
         latest = max(directories, key=os.path.getmtime)
         with open(latest, "r") as f:
@@ -108,7 +129,7 @@ def get_league_totw_player_data(league_id, week, year):
         data.append(get_player_primary_info(player["participantId"]))
 
     ts = round(float(datetime.now().timestamp()))
-    path = f"league/{league_id}/totw/{year}/{week}/{ts}.json"
+    path = f"{data_dir}/league/{league_id}/totw/{year}/{week}/{ts}.json"
     os.makedirs(os.path.split(path)[0], exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f)
