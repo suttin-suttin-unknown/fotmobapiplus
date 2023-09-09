@@ -231,7 +231,7 @@ def get_league_totw_player_data(league_id, week, year):
     data = []
     totw = get_league_totw_data(league_id, week, year)
     for player in totw["players"]:
-        data.append(get_player_data_for_db(player["participantId"]))
+        data.append(get_player_data_minified(player["participantId"]))
 
     ts = round(float(datetime.now().timestamp()))
     path = f"{data_dir}/league/{league_id}/totw/{year}/{week}/{ts}.json"
