@@ -1,3 +1,4 @@
 league/
 venv/
 *.yaml
+*.json

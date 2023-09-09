@@ -6,13 +6,17 @@ import time
 from datetime import datetime
 from operator import itemgetter
 
+import loguru
 import requests
 from cachetools import cached, TTLCache
+from tinydb import TinyDB, Query
 
 api_host = "https://www.fotmob.com/api"
 data_dir = "./data"
 week_in_seconds = 60 * 60 * 24 * 7
 no_cache_headers = {"Cache-Control": "no-cache"}
+
+logger = loguru.logger
 
 
 def convert_camel_to_snake(cc_str):
@@ -121,13 +125,16 @@ def get_player_data_minified(player_id):
     Pulls data from api and shrinks it for db.
     """
     def _parse_origin_data(player_data):
+        """
+        For origin data in player response
+        """
         origin_data = player_data["origin"]
         data = {}
         data["on_loan"] = origin_data["onLoan"]
         data["team_id"] = origin_data["teamId"]
         data["team_name"] = origin_data["teamName"]
         data["positions"] = []
-        positions = origin_data["positionDesc"]["positions"]
+        positions = origin_data["positionDesc"].get("positions", [])
         for position in positions:
             data["positions"].append({
                 "position": position["strPosShort"]["label"], 
@@ -215,10 +222,27 @@ def get_player_data_minified(player_id):
         "name": player["name"],
         **_parse_origin_data(player),
         **_parse_player_prop_data(player),
-        **_parse_recent_match_data(player),
-        **_parse_career_statistics_data(player),
+        # **_parse_recent_match_data(player),
+        # **_parse_career_statistics_data(player),
         **_parse_career_history_data(player)
     }
+
+
+def upsert_player_data(player_id):
+    player_data = get_player_data_minified(player_id)
+    db = TinyDB("players.json")
+    query = Query()
+    current_data = db.get(query.id == player_id)
+    if current_data:
+        db.update(player_data, query.id == player_id)
+    else:
+        db.insert(player_data)
+
+
+def save_totw_player_data(league_id, week, year):
+    totw = get_league_totw_data(league_id, week, year)
+    for player in totw["players"]:
+        upsert_player_data(player["participantId"])
 
 
 def get_league_totw_player_data(league_id, week, year):
@@ -271,19 +295,18 @@ def get_totw_table_formatted(table):
     return formatted_rows
 
 
-def get_all_season_totw(league_id, year):
+def save_all_season_totw_players(league_id, year):
+    logger.info(f"Saving TOTW data for League {league_id} - {year}")
     week = 1
     while True:
         try:
-            print(f"Saving data for League {league_id} Week {week}/{year}.")
-            print(*get_totw_table_formatted(get_totw_table(league_id, week, year)), sep="\n")
-        except IndexError as error:
-            print(error)
+            logger.info(f"Saving TOTW data for League {league_id} Week {week}/{year}.")
+            save_totw_player_data(league_id, week, year)
+        except IndexError:
             break
         except Exception as error:
-            print(error)
-            print(f"Skipping TOTW player save for League {league_id} Week {week}{year}.")
-            time.sleep(5)
+            logger.error(f"{error}. Skipping TOTW player save for League {league_id} Week {week}/{year}.")
+            time.sleep(2)
 
         week += 1
 
