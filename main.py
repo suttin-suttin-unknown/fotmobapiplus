@@ -120,7 +120,7 @@ def get_player_data_minified(player_id):
     """
     Pulls data from api and shrinks it for db.
     """
-    def parse_origin_data(player_data):
+    def _parse_origin_data(player_data):
         origin_data = player_data["origin"]
         data = {}
         data["on_loan"] = origin_data["onLoan"]
@@ -137,7 +137,7 @@ def get_player_data_minified(player_id):
 
         return data
     
-    def parse_player_prop_data(player_data):
+    def _parse_player_prop_data(player_data):
         props_data = player_data["playerProps"]
         data = {}
         for prop in props_data:
@@ -146,23 +146,7 @@ def get_player_data_minified(player_id):
             data[prop_key] = value["key"] or value["fallback"]
         return data
     
-    def parse_last_league_data(player_data):
-        league_data = player_data["lastLeague"]
-        data = {
-            "league_id": league_data["leagueId"]
-        }
-
-        for prop in league_data["playerProps"]:
-            key = prop["key"]
-            if key == "rating_title":
-                data["rating"] = prop["ratingProps"]["num"]
-                data["rating_color"] = prop["ratingProps"]["bgcolor"]
-            else:
-                data[key] = prop["value"]
-        
-        return {"last_league": data}
-    
-    def parse_career_history_data(player_data):
+    def _parse_career_history_data(player_data):
         parsed_data = {}
         parsed_data["clubs"] = []
         for club in player_data["careerHistory"]["careerData"]["careerItems"]["senior"]:
@@ -180,7 +164,7 @@ def get_player_data_minified(player_id):
 
         return parsed_data
     
-    def parse_recent_match_data(player_data):
+    def _parse_recent_match_data(player_data):
         recent_match_data = player_data["recentMatches"]["All competitions"]
         parsed_data = []
         for match in recent_match_data:
@@ -192,7 +176,7 @@ def get_player_data_minified(player_id):
 
         return {"recent_matches": parsed_data}
     
-    def parse_career_statistics_data(player_data):
+    def _parse_career_statistics_data(player_data):
         career_statistics_data = player_data["careerStatistics"]
         parsed_data = []
         for league in career_statistics_data:
@@ -229,12 +213,11 @@ def get_player_data_minified(player_id):
     return {
         "id": player["id"],
         "name": player["name"],
-        **parse_origin_data(player),
-        **parse_player_prop_data(player),
-        **parse_last_league_data(player),
-        **parse_career_history_data(player),
-        **parse_recent_match_data(player),
-        **parse_career_statistics_data(player)
+        **_parse_origin_data(player),
+        **_parse_player_prop_data(player),
+        **_parse_recent_match_data(player),
+        **_parse_career_statistics_data(player),
+        **_parse_career_history_data(player)
     }
 
 
