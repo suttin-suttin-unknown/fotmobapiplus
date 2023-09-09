@@ -116,39 +116,42 @@ def get_league_totw_data(league_id, week, year):
     return totw
 
 
-def get_player_data_for_db(player_id):
+def get_player_data_minified(player_id):
     """
     Pulls data from api and shrinks it for db.
     """
     def parse_origin_data(player_data):
         origin_data = player_data["origin"]
         data = {}
-        data["onLoan"] = origin_data["onLoan"]
-        data["teamId"] = origin_data["teamId"]
-        data["teamName"] = origin_data["teamName"]
+        data["on_loan"] = origin_data["onLoan"]
+        data["team_id"] = origin_data["teamId"]
+        data["team_name"] = origin_data["teamName"]
         data["positions"] = []
         positions = origin_data["positionDesc"]["positions"]
         for position in positions:
             data["positions"].append({
                 "position": position["strPosShort"]["label"], 
-                "occurences": position["occurences"], 
-                "is_main_position": position["isMainPosition"]
+                "apps": position["occurences"], 
+                "main": position["isMainPosition"]
             })
 
         return data
     
     def parse_player_prop_data(player_data):
+        props_data = player_data["playerProps"]
         data = {}
-        for prop in player_data["playerProps"]:
+        for prop in props_data:
             value = prop["value"]
             prop_key = "_".join([w.lower() for w in prop["title"].split()])
             data[prop_key] = value["key"] or value["fallback"]
         return data
     
     def parse_last_league_data(player_data):
-        data = {}
         league_data = player_data["lastLeague"]
-        data["leagueId"] = league_data["leagueId"]
+        data = {
+            "league_id": league_data["leagueId"]
+        }
+
         for prop in league_data["playerProps"]:
             key = prop["key"]
             if key == "rating_title":
@@ -157,11 +160,11 @@ def get_player_data_for_db(player_id):
             else:
                 data[key] = prop["value"]
         
-        return data
+        return {"last_league": data}
     
     def parse_career_history_data(player_data):
-        data = {}
-        data["clubs"] = []
+        parsed_data = {}
+        parsed_data["clubs"] = []
         for club in player_data["careerHistory"]["careerData"]["careerItems"]["senior"]:
             if not club["hasUncertainData"]:
                 club_data = {
@@ -173,21 +176,66 @@ def get_player_data_for_db(player_id):
                 if club.get("endDate"):
                     club_data["end_date"] = club["endDate"]
 
-                data["clubs"].append(club_data)
+                parsed_data["clubs"].append(club_data)
 
-        return data
+        return parsed_data
     
+    def parse_recent_match_data(player_data):
+        recent_match_data = player_data["recentMatches"]["All competitions"]
+        parsed_data = []
+        for match in recent_match_data:
+            parsed_data.append({
+                "match_id": match["versus"]["matchId"],
+                "rating": match["ratingProps"]["num"],
+                "rating_color": match["ratingProps"]["bgcolor"] # rating color is kind of random but interesting...
+            })
+
+        return {"recent_matches": parsed_data}
+    
+    def parse_career_statistics_data(player_data):
+        career_statistics_data = player_data["careerStatistics"]
+        parsed_data = []
+        for league in career_statistics_data:
+            league_name = league["name"]
+            for season in league["seasons"]:
+                try:
+                    season_start = season["stats"][0]["startTS"]
+                    season_stats = season["stats"][0]["statsArr"]
+                    stat_data = {}
+                    for stat in season_stats:    
+                        value = stat[-1]["value"]
+                        stat_key = stat[-1]["key"]
+                        if stat_key == "rating_title":
+                            stat_data["rating"] = value["num"]
+                            stat_data["rating_color"] = value["bgcolor"]
+                        elif not re.match(r"^[a-z_][a-z0-9_]*$", stat_key):
+                            key = "_".join(stat[0].split()).lower()
+                            stat_data[key] = value
+                        else:
+                            stat_data[stat_key] = value
+                    
+                    parsed_data.append({
+                        "name": league_name,
+                        "season_start": season_start,
+                        "season_stats": stat_data
+                    })
+                except IndexError:
+                    pass
+                
+        return {"career_statistics": parsed_data}
+
     player = get_player(player_id)
 
-    data = {}
-    data["id"] = player["id"]
-    data["name"] = player["name"]
-    data.update(parse_origin_data(player))
-    data.update(parse_player_prop_data(player))
-    data.update(parse_last_league_data(player))
-    data.update(parse_career_history_data(player))
-    
-    return data
+    return {
+        "id": player["id"],
+        "name": player["name"],
+        **parse_origin_data(player),
+        **parse_player_prop_data(player),
+        **parse_last_league_data(player),
+        **parse_career_history_data(player),
+        **parse_recent_match_data(player),
+        **parse_career_statistics_data(player)
+    }
 
 
 def get_league_totw_player_data(league_id, week, year):
@@ -200,11 +248,6 @@ def get_league_totw_player_data(league_id, week, year):
     data = []
     totw = get_league_totw_data(league_id, week, year)
     for player in totw["players"]:
-        # player_data = get_player(player["participantId"])
-        # # # origin
-        # # on_loan = player_data["origin"]["onLoan"]
-        # # positions = [itemgetter(*["isMainPosition", "occurences", ])(position) for position in player_data["origin"]["positionDesc"]["positions"]]
-
         data.append(get_player_data_for_db(player["participantId"]))
 
     ts = round(float(datetime.now().timestamp()))
