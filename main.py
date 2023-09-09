@@ -129,11 +129,22 @@ def get_player_data_minified(player_id):
         For origin data in player response
         """
         origin_data = player_data["origin"]
+        
         data = {}
-        data["on_loan"] = origin_data["onLoan"]
-        data["team_id"] = origin_data["teamId"]
-        data["team_name"] = origin_data["teamName"]
+        on_loan = origin_data.get("onLoan", None)
+        if on_loan != None:
+            data["on_loan"] = on_loan
+            
+        team_id = origin_data.get("teamId")
+        if team_id:
+            data["team_id"] = team_id
+
+        team_name = origin_data.get("teamName")
+        if team_name:
+            data["team_name"] = team_name
+
         data["positions"] = []
+
         positions = origin_data["positionDesc"].get("positions", [])
         for position in positions:
             data["positions"].append({
@@ -156,18 +167,20 @@ def get_player_data_minified(player_id):
     def _parse_career_history_data(player_data):
         parsed_data = {}
         parsed_data["clubs"] = []
-        for club in player_data["careerHistory"]["careerData"]["careerItems"]["senior"]:
-            if not club["hasUncertainData"]:
-                club_data = {
-                    "appearances": club["appearances"],
-                    "start_date": club["startDate"],
-                    "team": club["team"]
-                }
+        career_history_data = player_data["careerHistory"]
+        if career_history_data["fullCareer"]:
+            for club in career_history_data["careerData"]["careerItems"]["senior"]:
+                if not club["hasUncertainData"]:
+                    club_data = {
+                        "appearances": club["appearances"],
+                        "start_date": club["startDate"],
+                        "team": club["team"]
+                    }
 
-                if club.get("endDate"):
-                    club_data["end_date"] = club["endDate"]
+                    if club.get("endDate"):
+                        club_data["end_date"] = club["endDate"]
 
-                parsed_data["clubs"].append(club_data)
+                    parsed_data["clubs"].append(club_data)
 
         return parsed_data
     
@@ -234,6 +247,7 @@ def upsert_player_data(player_id):
     query = Query()
     current_data = db.get(query.id == player_id)
     if current_data:
+        logger.debug(f"Player {player_id} exists. Updating.")
         db.update(player_data, query.id == player_id)
     else:
         db.insert(player_data)
@@ -300,13 +314,14 @@ def save_all_season_totw_players(league_id, year):
     week = 1
     while True:
         try:
-            logger.info(f"Saving TOTW data for League {league_id} Week {week}/{year}.")
             save_totw_player_data(league_id, week, year)
         except IndexError:
             break
         except Exception as error:
             logger.error(f"{error}. Skipping TOTW player save for League {league_id} Week {week}/{year}.")
             time.sleep(2)
+        else:
+            logger.info(f"Saving TOTW data for League {league_id} Week {week}/{year}.")
 
         week += 1
 
