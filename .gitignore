@@ -2,3 +2,4 @@ league/
 venv/
 *.yaml
 *.json
+__pycache__

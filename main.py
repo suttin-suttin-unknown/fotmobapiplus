@@ -1,3 +1,5 @@
+from db import FotmobDB
+
 import glob
 import json
 import os
@@ -6,9 +8,9 @@ import time
 from datetime import datetime
 from operator import itemgetter
 
-import loguru
 import requests
 from cachetools import cached, TTLCache
+from loguru import logger
 from tinydb import TinyDB, Query
 
 api_host = "https://www.fotmob.com/api"
@@ -16,11 +18,31 @@ data_dir = "./data"
 week_in_seconds = 60 * 60 * 24 * 7
 no_cache_headers = {"Cache-Control": "no-cache"}
 
-logger = loguru.logger
-
 
 def convert_camel_to_snake(cc_str):
     return re.sub(r"(?<!^)(?=[A-Z])", "_", cc_str).lower()
+
+
+class FotmobDB:
+    _instance = None
+
+    def __new__(cls, db_file="fotmob.json"):
+        if cls._instance is None:
+            cls._instance = super(FotmobDB, cls).__new__(cls)
+            cls._instance.db = TinyDB(db_file)
+        return cls._instance
+    
+    def upsert_player(self, player, debug=False):
+        player_id = player["id"]
+        player_query = Query()
+        table = self.db.table("players")
+        current_data = table.get(player_query.id == player_id)
+        if current_data:
+            if debug:
+                logger.debug(f"Player {player_id} exists. Updating.")
+            table.update(player, player_query.id == player_id)
+        else:
+            table.insert(player)
 
 
 @cached(TTLCache(maxsize=50, ttl=week_in_seconds))
@@ -118,6 +140,16 @@ def get_league_totw_data(league_id, week, year):
     totw_url = totw_data["rounds"][-1 - (week - 1)]["link"]
     totw = requests.get(totw_url).json()
     return totw
+
+
+# cli function
+def save_league_totw_data(league_id, week, year):
+    totw = get_league_totw_data(league_id, week, year)
+    if totw:
+        totw_dir = f"{data_dir}/league/{league_id}/totw/{year}"
+        os.makedirs(totw_dir, exist_ok=True)
+        with open(os.path.join(totw_dir, f"{week}.json"), "w") as f:
+            json.dump([player for player in totw["players"]], f)
 
 
 def get_player_data_minified(player_id):
