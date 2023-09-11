@@ -1,6 +1,10 @@
+import glob
+import json
+import os
 import re
 from datetime import datetime
 from operator import itemgetter
+from urllib.parse import urlparse, parse_qs
 
 import requests
 from cachetools import cached, TTLCache
@@ -38,12 +42,6 @@ class FotmobDB:
         table = self.db.table("leagues")
         league = table.get(Query().id == league_id)
         return league
-    
-    def get_totw(self, league_id, season_year, week):
-        query = Query()
-        table = self.db.table("totw")
-        totw = table.get(query.league_id == league_id and query.season_year == season_year and query.week == week)
-        return totw
 
     def upsert_player(self, player, debug=False):
         player_id = player["id"]
@@ -112,15 +110,50 @@ def get_league_totw_links(league_id, season_year):
     if rounds_link:
         response = requests.get(rounds_link, headers=no_cache_headers).json()
         if response:
-            return [r["link"] for r in response["rounds"]]
+            return list(reversed([r["link"] for r in response["rounds"]]))
+        
 
-@cached(TTLCache(maxsize=100, ttl=week_in_seconds))
-def get_league_totw(league_id, season_year, week):
-    links = get_league_totw_links(league_id, season_year)
-    if links:
-        link = links[-week]
+@cached(TTLCache(maxsize=50, ttl=week_in_seconds))
+def get_league_totw_season_data(league_id, season_year):
+    data = {}
+    data["league_id"] = league_id
+    data["season_year"] = season_year
+    data["totw"] = []
+    for link in get_league_totw_links(league_id, season_year):
         response = requests.get(link, headers=no_cache_headers).json()
-        return response
+        if response:
+            round_id = parse_qs(urlparse(link).query)["roundid"][0]
+            data["totw"].append({
+                "round": round_id,
+                **response
+            })
+
+    return data
+
+def save_league_totw_season_data(league_id, season_year):
+    totw_dir = f"{data_dir}/totw/{league_id}"
+    target_path = f"{totw_dir}/{season_year}.json"
+    if not os.path.exists(target_path):
+        data = get_league_totw_season_data(league_id, season_year)
+        os.makedirs(totw_dir, exist_ok=True)
+        with open(target_path, "w") as f:
+            json.dump(data, f)
+
+        return data
+    else:
+        with open(target_path, "r") as f:
+            return json.load(f)    
+
+
+
+
+# @cached(TTLCache(maxsize=100, ttl=week_in_seconds))
+# def get_league_totw(league_id, season_year, week):
+#     links = get_league_totw_links(league_id, season_year)
+#     if links:
+#         link = links[-week]
+#         response = requests.get(link, headers=no_cache_headers).json()
+#         return response
     
 
 def get_league_data_minified(league_id):
@@ -159,23 +192,6 @@ def save_league(league_id):
     league = get_league_data_minified(league_id)
     if league:
         FotmobDB().upsert_league(league)
-
-
-def save_totw(league_id, season_year, week):
-    db = FotmobDB()
-    existing_totw = db.get_totw(league_id, season_year, week)
-    if not existing_totw:
-        logger.info(f"TOTW League {league_id} Year {season_year} Week {week} not found.")
-        totw = get_league_totw(league_id, season_year, week)
-        logger.info(f"TOTW data: {totw}")
-        totw_table = db.db.table("totw")
-        totw_table.insert({
-            "league_id": league_id,
-            "season_year": season_year,
-            "week": week,
-            **totw}
-        )
-
 
 
 
