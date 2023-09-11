@@ -1,9 +1,8 @@
 from api import get_player_data_minified, save_league_totw_season_data
 from db import FotmobDB
-from utils import convert_camel_to_snake
 
 import re
-from operator import itemgetter
+from itertools import chain
 
 from loguru import logger
 from prettytable import PrettyTable
@@ -61,6 +60,31 @@ def save_totw_player_data(league_id, season_year, round_id):
                 db.get_players_table().insert(player_data)
                 player = db.get_player(player_id)
                 print(f"Player {player['id']} saved.")
+
+
+@cli.command
+@click.argument("league_id", type=click.INT, required=True)
+@click.argument("season_year", type=click.INT, required=True)
+@click.option("-v", "--verbose", type=click.BOOL, default=False)
+def save_full_season_totw_player_data(league_id, season_year, verbose):
+    param_banner = f"League {league_id} - Season {season_year}/{season_year + 1}"
+    print(f"Saving all TOTW player data for {param_banner}")
+    data = save_league_totw_season_data(league_id, season_year)
+    player_ids = set(list(chain(*[[player["participantId"] for player in team["players"]] for team in data["totw"]])))
+    if verbose and not player_ids:
+        print(f"No totw season data saved for {param_banner}")
+
+    elif player_ids:
+        db = FotmobDB()
+        for i in player_ids:
+            player = db.get_player(i)
+            if verbose and player:
+                print(f"Player {i} found in DB.")
+            elif not player:
+                print(f"Player {i} not found in DB. Fetching...")
+                player_data = get_player_data_minified(i)
+                db.get_players_table().insert(player_data)
+                print(f"Player {i} saved.")
 
 
 @cli.command
