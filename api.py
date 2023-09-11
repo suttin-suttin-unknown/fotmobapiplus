@@ -17,10 +17,6 @@ week_in_seconds = 60 * 60 * 24 * 7
 no_cache_headers = {"Cache-Control": "no-cache"}
 
 
-def convert_camel_to_snake(cc_str):
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", cc_str).lower()
-
-
 class FotmobDB:
     """
     Database for relevant fotmob data.
