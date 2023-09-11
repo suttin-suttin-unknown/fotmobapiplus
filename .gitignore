@@ -1,5 +1,13 @@
-data/
+# env
 venv/
+
+# dirs
+data/
+
+# file types
 *.yaml
 *.json
+*.txt
+
+# build cruft
 __pycache__
