@@ -35,11 +35,19 @@ def get_totw_data(league_id, season_year):
     logger.info(f"TOTW Data - League: {data['league_id']} - Year: {data['season_year']}")
     totw = data["totw"]
     for team in totw:
-        print(f"Week {team['round']}")
-        players = team["players"]
-        keys = ["name", "participantId", "matchId", "rating", "motm"]
-        player_table = format_display_table(players, keys=keys)
-        print(player_table)
+        print(f"Round: {team['round']}")
+        try:
+            players = team["players"]
+            player_table = format_display_table(players, keys=[
+                "name", 
+                "participantId", 
+                "matchId", 
+                "rating", 
+                "motm"
+            ])
+            print(player_table)
+        except KeyError:
+            pass
 
 
 if __name__ == "__main__":
