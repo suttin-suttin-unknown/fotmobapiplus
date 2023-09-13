@@ -2,6 +2,7 @@ import re
 import sys
 
 import loguru
+import pycountry
 
 
 def configure_logger():
@@ -34,3 +35,10 @@ def convert_price_string(price_string):
     except:
         return None
     
+
+def get_country_code(name):
+    country = pycountry.countries.get(name=name)
+    if country:
+        return country.alpha_3
+    
+    return name[0:3].upper()
