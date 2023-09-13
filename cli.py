@@ -16,15 +16,20 @@ def format_display_table(items):
 
 
 def get_player_row(player):
+    team = player["team"]["name"]
+    if player["on_loan"]:
+        team = f"{team} (on loan)"
+
     clubs = player["clubs"]
     apps = [int(re.match(r"(\d+)", club["appearances"]).group()) for club in clubs if club["appearances"]]
+    
     return {
         "name": f"{player['name']} ({player['id']})",
-        "team": f"{player['team']['name']} ({player['team']['id']})",
+        "positions": "/".join(player["positions"]),
         "age": player["age"],
         "apps": sum(apps),
-        "market_value": player.get("market_value"),
-        "on_loan": player.get("on_loan", "n/a")
+        "team": team,
+        "market_value": player.get("market_value")
     }
 
 

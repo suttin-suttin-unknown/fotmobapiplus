@@ -37,6 +37,8 @@ def get_player(player_id):
 
 def get_player_core_info(player):
     position_data = player["origin"]["positionDesc"]
+    positions = sorted([p for p in position_data["positions"]], key=lambda d: (-d["isMainPosition"], d["occurences"]))
+    positions = [p["strPosShort"]["label"] for p in positions]
     player_props_data = {}
     for prop in player["playerProps"]:
         title = "_".join(prop["title"].split()).lower()
@@ -56,6 +58,7 @@ def get_player_core_info(player):
                     "appearances": club["appearances"]
                 })
 
+    
     return {
         "id": player["id"],
         "name": player["name"],
@@ -64,8 +67,7 @@ def get_player_core_info(player):
             "name": player["origin"].get("teamName"),
             "id": player["origin"].get("teamId")
         },
-        "primary_position": get_position_short(position_data["primaryPosition"]["label"]),
-        "other_positions": [get_position_short(_["label"]) for _ in position_data.get("nonPrimaryPositions", [])],
+        "positions": positions,
         "clubs": clubs,
         **player_props_data
     }
@@ -165,10 +167,6 @@ def get_league_season_totw_players(league_id, season_year):
             players.append(player)
     
     return players
-
-
-def get_position_short(s):
-    return "".join(t[0].upper() for t in s.split())
 
 
 if __name__ == "__main__":
