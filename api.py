@@ -26,7 +26,7 @@ def get_player(player_id):
     logger.info(f"Getting player {player_id} from api.")
     response = requests.get(f"{api_host}/playerData?id={player_id}", headers=no_cache_headers).json()
     if response:
-        db.get_players_table().insert(get_player_core_info(response))
+        db.get_players_table().insert(get_player_simplified(response))
         player = db.get_player(player_id)
         if not player:
             logger.error(f"Player {player_id} not found.")
@@ -35,11 +35,19 @@ def get_player(player_id):
         return player
     
 
-def get_player_core_info(player):
-    position_data = player["origin"]["positionDesc"]
-    positions = sorted([p for p in position_data["positions"]], key=lambda d: (-d["isMainPosition"], d["occurences"]))
-    positions = [p["strPosShort"]["label"] for p in positions]
+def get_player_simplified(player):
+    """
+    Takes player data with Fotmob API schema and returns dict with simplified collection of data. 
+    Intent to be used to save player data to local database.
+
+    param: player (dict)
+
+    returns: dict - simplfied
+    """
     player_props_data = {}
+    position_data = player["origin"]["positionDesc"]
+    positions = sorted(position_data.get("positions", []), key=lambda d: (-d["isMainPosition"], d["occurences"]))
+    positions = [p["strPosShort"]["label"] for p in positions]
     for prop in player["playerProps"]:
         title = "_".join(prop["title"].split()).lower()
         player_props_data[title] = prop["value"]["key"] or prop["value"]["fallback"]
@@ -58,7 +66,6 @@ def get_player_core_info(player):
                     "appearances": club["appearances"]
                 })
 
-    
     return {
         "id": player["id"],
         "name": player["name"],
@@ -111,6 +118,7 @@ def get_league_season_totw(league_id, season_year):
             logger.info(f"Using rounds link {rounds_link}")
             break
 
+    
     totws = []
     if rounds_link:
         logger.info(f"Getting TOTW from {rounds_link}.")
@@ -121,10 +129,10 @@ def get_league_season_totw(league_id, season_year):
                 for r in rounds:
                     link = r["link"]
                     totw = requests.get(r["link"]).json()
-                    print(totw)
                     round_id = parse_qs(urlparse(link).query)["roundid"][0]
                     logger.info(f"Getting TOTW for {r}. Url: {link}")
-                    if totw:
+                    if totw and not "errorMessage" in totw:
+                        
                         logger.success(f"TOTW found for {round_id}")
                         totws.append({"round": round_id, **totw})
                     time.sleep(0.1)
@@ -156,6 +164,7 @@ def group_totw_data(league_id, season_year):
             else:
                 totw_ratings[player_id] = [rating_info]
     return totw_ratings
+
 
 def get_league_season_totw_players(league_id, season_year):
     data = group_totw_data(league_id, season_year)
