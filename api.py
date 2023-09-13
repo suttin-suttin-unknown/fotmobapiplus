@@ -23,10 +23,16 @@ def get_player(player_id):
     if player:
         return player
     
+    logger.info(f"Getting player {player_id} from api.")
     response = requests.get(f"{api_host}/playerData?id={player_id}", headers=no_cache_headers).json()
     if response:
         db.get_players_table().insert(get_player_core_info(response))
-        return db.get_player(player_id)
+        player = db.get_player(player_id)
+        if not player:
+            logger.error(f"Player {player_id} not found.")
+            return
+    
+        return player
     
 
 def get_player_core_info(player):
@@ -53,13 +59,13 @@ def get_player_core_info(player):
     return {
         "id": player["id"],
         "name": player["name"],
-        "on_loan": player["origin"]["onLoan"],
+        "on_loan": player["origin"].get("onLoan"),
         "team": {
-            "name": player["origin"]["teamName"],
-            "id": player["origin"]["teamId"]
+            "name": player["origin"].get("teamName"),
+            "id": player["origin"].get("teamId")
         },
         "primary_position": get_position_short(position_data["primaryPosition"]["label"]),
-        "other_positions": [get_position_short(_["label"]) for _ in position_data["nonPrimaryPositions"]],
+        "other_positions": [get_position_short(_["label"]) for _ in position_data.get("nonPrimaryPositions", [])],
         "clubs": clubs,
         **player_props_data
     }
@@ -79,18 +85,15 @@ def get_league(league_id, default_params={}):
 
 def get_league_season_totw(league_id, season_year):
     path = f"{data_dir}/totw/{league_id}/{season_year}.json"
-    logger.info(f"Expected Path: {path}")
     if os.path.exists(path):
-        logger.info(f"Path {path} found.")
         with open(path, "r") as f:
             totws = json.load(f)
             if totws:
-                logger.success(f"Data found.")
                 return totws
     
     league = get_league(league_id)
     if league:
-        logger.info(f"Getting stat links from league {league_id}")
+        # logger.info(f"Getting stat links from league {league_id}")
         totw_links = []
         for item in league["stats"]["seasonStatLinks"]:
             totw_links.append({
@@ -125,11 +128,9 @@ def get_league_season_totw(league_id, season_year):
                     time.sleep(0.1)
 
     if totws:
-        logger.info(f"Saving TOTW data.")
         os.makedirs(os.path.split(path)[0], exist_ok=True)
         with open(path, "w") as f:
             json.dump(totws, f)
-        logger.success("Done.")
 
     return totws
 
