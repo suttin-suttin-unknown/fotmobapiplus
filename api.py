@@ -14,11 +14,10 @@ data_dir = "./data"
 no_cache_headers = {"Cache-Control": "no-cache"}
 
 logger = configure_logger()
-
+db = FotmobDB()
 
 @functools.lru_cache(maxsize=100)
 def get_player(player_id):
-    db = FotmobDB()
     player = db.get_player(player_id)
     if player:
         return player
