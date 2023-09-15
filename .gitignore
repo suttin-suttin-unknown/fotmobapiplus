@@ -3,6 +3,7 @@ venv/
 
 # dirs
 data/
+views/
 
 # file types
 *.yaml

@@ -11,7 +11,7 @@ def configure_logger():
         handlers=[
             {
                 "sink": sys.stdout,
-                "format": "[<green>{time:YYYY-MM-DD HH:mm:ss}</green>]| <level>{message}</level>",
+                "format": "[<green>{time:YYYY-MM-DD HH:mm:ss}</green>] <level>{message}</level>",
                 "level": "TRACE",
                 "colorize": True,
                 "backtrace": True,
@@ -26,15 +26,13 @@ def convert_camel_to_snake(cc_str):
 
 
 def convert_price_string(price_string):
-    try:
+    if price_string:
         suffixes = {"K": 1000, "M": 1000000}
-        suffix = price_string[-1]
+        suffix = price_string[-1].upper()
         if suffix in suffixes:
             value = float(price_string[:-1].strip("€"))
             return int(value * suffixes[suffix])
-    except:
-        return None
-    
+
 
 def get_country_code(name):
     country = pycountry.countries.get(name=name)
