@@ -16,6 +16,18 @@ no_cache_headers = {"Cache-Control": "no-cache"}
 logger = configure_logger()
 db = FotmobDB()
 
+
+def get_team(team_id, default_params={}):
+    if not default_params:
+        default_params = {
+            "tab": "overview",
+            "type": "league",
+            "timeZone": "America/Los_Angeles"
+        }
+    params = {"id": team_id, **default_params}
+    return requests.get(f"{api_host}/teams", params=params, headers=no_cache_headers).json()
+
+
 @functools.lru_cache(maxsize=100)
 def get_player(player_id):
     player = db.get_player(player_id)
