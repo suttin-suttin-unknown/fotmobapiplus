@@ -4,20 +4,26 @@ import utils
 import csv
 import glob
 import hashlib
+import json
 import os
 import re
+import statistics
 import time
 from datetime import datetime
+from itertools import groupby
 
 from prettytable import PrettyTable
 import click
 
 
-def format_display_table(items):
+def format_display_table(items, field_names=None):
+    if not field_names:
+        field_names = items[0].keys()
+         
     table = PrettyTable()
     table.align = "l"
     if items:
-        table.field_names = list(" ".join(str(t).capitalize() for t in k.split("_")) for k in items[0].keys())
+        table.field_names = list(" ".join(str(t).capitalize() for t in k.split("_")) for k in field_names)
         for i in items:
             table.add_row(list(i.values()))
         return table
@@ -75,8 +81,6 @@ def get_player(player_id):
     print(format_display_table([get_player_row(player)]))
 
 
-filters = {}
-
 @cli.command
 @click.argument("league_id", type=click.INT, required=True)
 @click.argument("season_year", type=click.INT, required=True)
@@ -127,30 +131,27 @@ def aggregate_totw_data(league_id, until, save):
 
     season_groupings = merge_groupings(*season_groupings)
     player_table = []
-    filters = {
-        "max_apps": 110,
-        "max_market_value": 700000,
-        "in_league": True
-    }
     start = time.time()
-    print(f"Looking up {len(season_groupings)} players.")
+    print(f"Looking up {len(season_groupings)} players...")
+    print(f"Expected time: {round(len(season_groupings) /(1.29 * 60), 2)}m")
     for i in season_groupings:
         print(f"Getting player {i}")
         player = api.get_player(i)
         if player:
             row = get_player_row(player)
-            price = utils.convert_price_string(row["market_value"])
-            if row["apps"] <= filters["max_apps"] \
-                and (price or 0) < filters["max_market_value"]:
-                totws = season_groupings[i]
-                if totws:
-                    row["totw_count"] = len(totws)
-                else:
-                    row["totw_count"] = 0
-                player_table.append(row)
+            totws = season_groupings[i]
+            if totws:
+                row["totw_count"] = len(totws)
+            else:
+                row["totw_count"] = 0
+            player_table.append(row)
+            # price = utils.convert_price_string(row["market_value"])
+            # if row["apps"] <= filters["max_apps"] \
+            #     and (price or 0) < filters["max_market_value"]:
+                
 
     end = time.time()
-    print(f"Total time: {round(end - start, 2)}s")
+    print(f"Total time: {round((end - start) / 60, 2)}m")
 
     def sort_table(row):
         age = row["age"] or 0
@@ -163,9 +164,9 @@ def aggregate_totw_data(league_id, until, save):
 
     player_table = sorted(player_table, key=sort_table)
     player_keys = list(player_table[0].keys())
-    print(player_keys)
-    print(format_display_table(player_table))
-    print(format_display_table(query_stats_table))
+    # print(player_keys)
+    # print(format_display_table(player_table))
+    # print(format_display_table(query_stats_table))
 
     if save:
         views_dir = "views"
@@ -200,6 +201,7 @@ def get_view(league_id, until):
 
     if table:
         print(format_display_table(table))
+        print(format_display_table([{"count": len(table)}]))
 
 
 def dedupe_dict_list(dict_list):
@@ -245,66 +247,219 @@ def create_master_table():
     master_table = dedupe_dict_list(master_table)
     return master_table
 
+    
+@cli.command
+@click.option("-mn_a", "--min-age", type=click.INT)
+@click.option("-mx_a", "--max-age", type=click.INT)
+@click.option("-mn_mv", "--min-market-value", type=click.INT)
+@click.option("-mx_mv", "--max-market-value", type=click.INT)
+@click.option("-mn_tw", "--min-totw", type=click.INT)
+@click.option("-mx_tw", "--max-totw", type=click.INT)
+@click.option("-s", "--sort", type=click.STRING)
+def get_master_table(min_age, max_age, min_market_value, max_market_value, min_totw, max_totw, sort):
+    master_table = create_master_table()
+
+    if min_age:
+        _master_table = []
+        for row in master_table:
+            age = row.get("age")
+            if age and int(age) >= min_age:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+    if max_age:
+        _master_table = []
+        for row in master_table:
+            age = row.get("age")
+            if age and int(age) <= max_age:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+    if min_market_value:
+        _master_table = []
+        for row in master_table:
+            mv = utils.convert_price_string(row["market_value"])
+            if mv and int(mv) >= min_market_value:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+    if max_market_value:
+        _master_table = []
+        for row in master_table:
+            mv = utils.convert_price_string(row["market_value"])
+            if mv and int(mv) <= max_market_value:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+    if min_totw:
+        _master_table = []
+        for row in master_table:
+            totw_count = row.get("totw_count")
+            if totw_count and int(totw_count) >= min_totw:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+    if max_totw:
+        _master_table = []
+        for row in master_table:
+            totw_count = row.get("totw_count")
+            if totw_count and int(totw_count) <= max_totw:
+                _master_table.append(row)
+
+        master_table = _master_table
+
+
+    if not sort:
+        print(format_display_table(sorted(master_table, key=lambda row: -int(row["totw_count"]))))
+        print(format_display_table([{"count": len(master_table)}]))
+        mv_mean = statistics.harmonic_mean([utils.convert_price_string(r["market_value"]) for r in master_table])
+        print(mv_mean)
+
+
+def get_price_string(p):
+    if p >= 1000000000:
+        return f"€{round(float(p/1000000000), 1)}B"
+    if 1000000 < p <= 1000000000:
+        return f"€{round(float(p/1000000), 1)}M"
+    if 1000 < p <= 1000000:
+        return f"€{round(float(p/1000))}K"
+
+
+def get_transfer_row(t):
+    on_loan = t["onLoan"]
+    fee = t["fee"] or {}
+    fee_value = fee.get("value")
+    name = t["name"]
+    player_id = t["playerId"]
+    date = t["transferDate"]
+    position = t.get("position") or {}
+    position = position.get("label")
+    from_club = t["fromClub"]
+    to_club = t["toClub"]
+    market_value = t.get("marketValue")
+    return {
+        "name": name,
+        "id": player_id,
+        "date": str(datetime.fromisoformat(date).date()),
+        "position": position,
+        "from_club": from_club,
+        "to_club": to_club,
+        "market_value": market_value,
+        "fee": fee_value,
+        "on_loan": on_loan
+    }
+
+
+def print_header(h, space_length=5, char="=", side_char="||"):
+    spaces = " " * space_length
+    header = f"{side_char}{spaces}{h}{spaces}{side_char}"
+    header_banner = char * len(header)
+    print("\n".join([header_banner, header, header_banner]))
+    print("\n")
+
+
+def print_table(table, header=None, field_names=None):
+    if header:
+        print_header(header)
+
+    print(format_display_table(table, field_names=field_names))
+    print("\n")
+
 
 @cli.command
-def get_master_table():
-    master_table = create_master_table()
-    filters = {
-        "max_age": 25,
-        "max_market_value": 330000,
-        "min_totw_count": 1
-    }
-    master_table = list(filter(lambda r: int(r["age"]) <= filters["max_age"], master_table))
-    master_table = list(filter(lambda r: int(utils.convert_price_string(r["market_value"]) or 0) <= filters["max_market_value"], master_table))
-    master_table = list(filter(lambda r: int(r["totw_count"]) >= filters["min_totw_count"], master_table))
-    missing_table = list(filter(lambda r: not r["market_value"], master_table))
-    exceptions = []
-    with open("views/exceptions/exceptions.csv", "r") as csv_file:
-        reader = csv.DictReader(csv_file)
-        for r in reader:
-            if r.get("market_value"):
-                exceptions.append(r)
+@click.argument("league_id", required=True, type=click.INT)
+@click.option("-d", "--display", type=click.BOOL, default=True)
+@click.option("-i", "--transfers-in", type=click.BOOL, default=True)
+@click.option("-o", "--transfers-out", type=click.BOOL, default=False)
+@click.option("-f", "--ignore-no-fee", type=click.BOOL, default=True)
+def get_league_transfer_list(league_id, display, transfers_in, transfers_out, ignore_no_fee):
+    year = datetime.today().year
+    transfers = None
+    path = f"data/transfers/{league_id}/{year}.json"
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            transfers = json.load(f)
 
-    exception_names = [e["name"] for e in exceptions]
+    if not transfers:
+        league = api.get_league(league_id)
+        team_ids = [t["id"] for t in league["table"][0]["data"]["table"]["all"]]
+        transfers = {"players_in": [], "players_out": []}
+        for t in team_ids:
+            team = api.get_team(t)
+            if team:
+                if team.get("transfers"):
+                    players_in = [get_transfer_row(t) for t in team.get("transfers", {}).get("data", {}).get("Players in", [])]
+                    players_out = [get_transfer_row(t) for t in team.get("transfers", {}).get("data", {}).get("Players out", [])]
+                    if players_in:
+                        transfers["players_in"].extend(players_in)
+                    if players_out:
+                        transfers["players_out"].extend(players_out)    
+
+    if not os.path.exists(path):
+        os.makedirs(os.path.split(path)[0], exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(transfers, f)
     
-    updated_missing = []
-    for i in missing_table:
-        name = i["name"]
-        if name in exception_names:
-            exception = [e for e in exceptions if name == e["name"]]
-            if len(exception) == 1:
-                n = i.copy()
-                n["market_value"] = f"€{exception[0]['market_value']}"
-                updated_missing.append(n)
+    if display:
+        sums_table = []
+        if transfers_in:
+            print_header("TRANSFERS IN", space_length=60, char="-", side_char="|")
+            grouped = {key: list(group) for key, group in groupby(transfers["players_in"], key=lambda t: t["to_club"])}
+            sums = []
+            for team in grouped:
+                print_header(team, space_length=(50 - 4 - len(team)))
+                team_transfers = grouped[team]
+                for t in team_transfers:
+                    del t["to_club"]
+                with_fee = [t for t in team_transfers if t["fee"]]
+                without_fee = [t for t in team_transfers if not t["fee"]]
+                if with_fee:
+                    for t in with_fee:
+                        try:
+                            if not t["on_loan"]:
+                                fee_v = utils.convert_price_string(t["fee"])
+                                mv_v = utils.convert_price_string(t["market_value"])
+                                t["fee_mv_ratio"] = round(fee_v/mv_v,2)
+                        except:
+                            pass
+                        finally:
+                            if not t.get("fee_mv_ratio"):
+                                t["fee_mv_ratio"] = "n/a"
+                    
+                    with_fee = sorted(with_fee, key=lambda t: -datetime.fromisoformat(t["date"]).timestamp())
+                    print("With Fee")
+                    print_table(with_fee, field_names=["Name", "Id", "Date", "P", "From", "MV", "F", "On Loan", "F/MV"])
+                    #print(format_display_table(sorted(with_fee, key=lambda t: -datetime.fromisoformat(t["date"]).timestamp())))
+                    total_spend = sum([int(utils.convert_price_string(t["fee"])) for t in with_fee])
+                    sums.append({"team": team, "total_spend": total_spend})
+                    sums = sorted(sums, key=lambda d: -d["total_spend"])
 
-    #print(format_display_table(updated_missing))
+                if without_fee:
+                    for t in without_fee:
+                        del t["fee"]
 
-    master_complete = list(filter(lambda r: r["market_value"], master_table))
-    final_master = master_complete + updated_missing
-    final_master = sorted(final_master, key=lambda r: -int(r["totw_count"]))
+                    free_agents = [t for t in without_fee if t["from_club"] == "Free agent"]
+                    not_free_agents = [t for t in without_fee if t["from_club"] != "Free agent"]
+                    not_free_agents = sorted(not_free_agents, key=lambda t: -datetime.fromisoformat(t["date"]).timestamp())
+                    print("Without Fee")
+                    print_table(not_free_agents, field_names=["Name", "Id", "Date", "P", "From", "MV", "On Loan"])
+                    if free_agents:
+                        for t in free_agents:
+                            del t["from_club"]
+                        free_agents = sorted(free_agents, key=lambda t: -datetime.fromisoformat(t["date"]).timestamp())
+                        print("Free Agent(s)")
+                        print_table(free_agents, field_names=["Name", "Id", "Date", "P", "MV", "On Loan"])
 
-    filters = {
-        "max_market_value": 330000
-    }
+                sums_table = [{"team": s["team"], "total_spend": get_price_string(s["total_spend"])} for s in sums]
 
-    # final_master = 
-    
-    # final_master = [r for r in final_master if (int(utils.convert_price_string(r["market_value"])) or 0) <= filters["max_market_value"]]
-
-    final_master = [r for r in final_master if utils.convert_price_string(r["market_value"])]
-    final_master = [r for r in final_master if utils.convert_price_string(r["market_value"]) <= filters["max_market_value"]]
-    print(format_display_table(final_master))
-    print(len(final_master))
-
-    with open("players.csv", "w") as f:
-        writer = csv.DictWriter(f, fieldnames=final_master[0].keys())
-        writer.writeheader()
-        writer.writerows(final_master)
-    #print(format_display_table(sorted(master_table, key=lambda r: -int(r["totw_count"]))))
-    
-
-
-
+        print_header("STATS")
+        print(format_display_table(sums_table))
+        
+        
 if __name__ == "__main__":
-    from pprint import pprint
     cli()
